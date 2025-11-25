@@ -1,0 +1,350 @@
+// === GLOBAL CONSTANTS ===
+const BOX_LINK = "https://pacificu.app.box.com/f/b2de47d1470349f4ae541a4964ad7766"; // Replace this with your Box folder link
+const USS_CALENDAR_LINK = "https://calendar.google.com/calendar/u/1?cid=ZDk5MDE3MzVAcGFjaWZpY3UuZWR1"; // USS Calendar link
+
+function trackNewASPURequests() {
+  const folderId = '1AP7OveM0-fbn5UXt3psJ2sdSOLI4cGL0bMCJ89z_z2IwKvEW88-aH8JjRTG3qHGaOl2Xaiy5'; // Folder containing student request spreadsheets
+  const sheetId = '1etgeZYgggTTDZ2Ix3odglgC2HdZl1LHhkskwQ0VjKx8'; // Master Tracker Sheet ID
+
+  const folder = DriveApp.getFolderById(folderId);
+  const trackerFile = SpreadsheetApp.openById(sheetId);
+  const tracker = trackerFile.getSheetByName('Master Tracker');
+
+  const files = folder.getFiles();
+
+
+  //  Only pull actual used range, not full column
+  const lastUsedRow = tracker.getLastRow();
+  const existingLinks = lastUsedRow > 1
+    ? tracker.getRange(2, 3, lastUsedRow - 1, 1).getValues().flat().filter(link => link && link.toString().trim() !== "")
+    : [];
+
+  while (files.hasNext()) {
+    const file = files.next();
+let fileId = file.getId();
+let name = file.getName();
+
+// If file is Excel, convert first
+if (name.toLowerCase().endsWith(".xlsx")) {
+  try {
+    fileId = convertExcelToSheet(fileId);
+    Logger.log("Converted Excel file: " + name);
+  } catch (err) {
+    Logger.log("Error converting Excel file: " + err);
+    continue; // skip if conversion fails
+  }
+}
+
+const url = DriveApp.getFileById(fileId).getUrl();
+
+if (existingLinks.includes(url)) continue; // Skip if already tracked
+
+const uniqueId = "REQ-2025-" + Math.floor(1000 + Math.random() * 9000);
+
+let studentName = "Unknown Student";
+try {
+  const studentSheet = SpreadsheetApp.openById(fileId);
+  const homePage = studentSheet.getSheetByName('Home_Page');
+  const nameFromB9 = homePage.getRange("B9").getValue();
+  if (nameFromB9) studentName = nameFromB9;
+} catch (err) {
+  Logger.log("Error reading student name: " + err);
+}
+
+
+    //  Fresh lastRow each loop
+    const lastRow = tracker.getLastRow() + 1;
+
+    tracker.getRange(lastRow, 1).setValue(uniqueId); 
+    tracker.getRange(lastRow, 2).setValue(studentName); 
+    tracker.getRange(lastRow, 3).setValue(url); 
+    tracker.getRange(lastRow, 4).setValue("Pending"); 
+    tracker.getRange(lastRow, 5).setValue(""); 
+    tracker.getRange(lastRow, 6).setValue("Pending"); 
+    tracker.getRange(lastRow, 7).setValue(""); 
+    
+    const formulaHomeI3 = `=IF(C${lastRow}="","",IMPORTRANGE(C${lastRow},"Home_Page!I3"))`; 
+    tracker.getRange(lastRow, 8).setFormula(formulaHomeI3);
+
+    tracker.getRange(lastRow, 9).setValue(""); 
+    tracker.getRange(lastRow, 10).setValue(""); 
+    tracker.getRange(lastRow, 11).setValue(""); 
+    tracker.getRange(lastRow, 12).setValue("Pending"); 
+
+    tracker.getRange(lastRow + 1, 1).setValue("--spacer--"); 
+
+    const formulaTransposed = `=IF(C${lastRow}="","",IMPORTRANGE(C${lastRow},"Transposed_Info!B3:W4"))`;
+    tracker.getRange(lastRow, 14).setFormula(formulaTransposed);
+  }
+}
+
+
+// === MENU UI ===
+function onOpen() {  
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('EmailTrackingStatus')
+    .addItem('Approve FC Request', 'approveFCRequest') 
+    .addItem('USS Approve Transfer', 'approveUSSTransfer')
+    .addItem('USS Approve Reimb', 'approveUSSReimb')
+    .addItem('Deny USS Request', 'denyUSSRequest')
+    .addItem('Process Completed', 'processCompleted')
+    .addToUi();
+
+  trackNewASPURequests(); 
+}
+
+// === SHARED FC APPROVAL FUNCTION ===
+function handleApproval(fcColumnName, approvalStatus, subject, emailOptions) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Master Tracker');
+  const row = sheet.getActiveRange().getRow();
+
+  // Update FC Status column
+  const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const fcIndex = headerRow.indexOf(fcColumnName);
+  if (fcIndex !== -1) sheet.getRange(row, fcIndex + 1).setValue(approvalStatus);
+
+  // Update overall request status (column 4)
+  sheet.getRange(row, 4).setValue(approvalStatus === "Approved" ? "Approved" : "Not Approved");
+
+  // Only proceed with email and sharing if approved
+  if (approvalStatus === "Approved") {
+    const requestLink = sheet.getRange(row, 3).getValue();
+    const fileId = extractFileId(requestLink);
+    const studentSheet = SpreadsheetApp.openById(fileId);
+    const homePage = studentSheet.getSheetByName('Home_Page');
+    const studentEmail = homePage.getRange("B10").getValue().toString().trim();
+
+    if (!studentEmail) {
+      SpreadsheetApp.getUi().alert("No student email found in column B for this request.");
+      return;
+    }
+
+    // Share the student sheet with view-only access
+    studentSheet.addViewer(studentEmail);
+
+    // Build email body with request link
+    const fullBody = emailOptions.htmlBody || `
+      <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+        <p>Hello,</p>
+        <p>Your funding request has been <strong style="color:green;">approved</strong> by the Finance Committee. Approval amount my vary from the original request.</p>
+        <p><strong>Next step:</strong> USS Review.</p>
+        All USS meetings are open to the public, but you are not required to be present for your request to be seen.<br>
+        <a href="${USS_CALENDAR_LINK}" target="_blank" style="color: #1a73e8;">View upcoming USS meetings</a><br>
+        <p>You can <a href="${requestLink}" target="_blank" style="color: #1a73e8;">view your request here</a>.</p>
+        <p>We will reach out with the final decision once it has been reviewed.</p>
+        <br>
+        <p style="margin-bottom: 0;">Best,</p>
+        <p style="margin-top: 2px;">
+          Finance Committee<br>
+          Pacific University Undergraduate Student Senate<br>
+          <a href="mailto:studentsenatefinance@groups.pacificu.edu">studentsenatefinance@groups.pacificu.edu</a>
+        </p>
+      </div>
+    `;
+
+    GmailApp.sendEmail(studentEmail, subject, "", { ...emailOptions, htmlBody: fullBody });
+  }
+}
+
+// === FC APPROVAL FUNCTIONS ===
+function approveFCRequest() {
+  handleApproval(
+    "FC Approved",
+    "Approved",
+    "Your Funding Request was Approved by the Finance Committee",
+    { from: "studentsenate@pacificu.edu", name: "Student Senate" }
+  );
+  SpreadsheetApp.getUi().alert("Funding request marked Approved. Email sent to applicant.");
+}
+
+
+// === USS ACTIONS ===
+function approveUSSTransfer() {
+  handleUSSApproval("Transfer"); 
+}
+
+function approveUSSReimb() {
+  handleUSSApproval("Reimbursement"); 
+}
+
+function denyUSSRequest() {
+  handleUSSApproval("Denied"); 
+}
+
+// === SHARED USS APPROVAL FUNCTION ===
+function handleUSSApproval(method) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Master Tracker');
+  const row = sheet.getActiveRange().getRow();
+  
+  const requestLink = sheet.getRange(row, 3).getValue();
+  const fileId = extractFileId(requestLink);
+  const studentSheet = SpreadsheetApp.openById(fileId);
+  const homePage = studentSheet.getSheetByName('Home_Page');
+  const studentEmail = homePage.getRange("B10").getValue().toString().trim(); // Ensure valid email
+  
+  if (!studentEmail || !studentEmail.includes("@")) {
+    SpreadsheetApp.getUi().alert("No valid student email found for this request.");
+    return;
+  }
+
+if (method === "Denied") {
+    // === DENIED PATH ===
+    sheet.getRange(row, 6).setValue("Denied"); // update USS Approved column
+    GmailApp.sendEmail(studentEmail,
+      "Your Funding Request was Denied by USS",
+      "",
+      {
+        from: "studentsenate@pacificu.edu",
+        name: "Student Senate",
+        htmlBody: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+            <p>Hello,</p>
+            <p>Unfortunately, your funding request was not approved by the USS.</p>
+            <p>If you have any questions or would like to better understand the decision, feel free to contact us at 
+            <a href="mailto:studentsenatefinance@groups.pacificu.edu">studentsenatefinance@groups.pacificu.edu</a>.</p>
+            <br>
+            <p style="margin-bottom: 0;">Best,</p>
+            <p style="margin-top: 2px;">
+              USS Finance Committee<br>
+              Pacific University Undergraduate Student Senate
+            </p>
+          </div>`
+      }
+    );
+    SpreadsheetApp.getUi().alert("USS request marked Denied. Email sent to applicant.");
+    return; // stop after denial
+  }
+
+  // === APPROVED PATH ===
+  const approvalAmount = sheet.getRange(row, 8).getValue(); // Column H
+  if (!approvalAmount) {
+    SpreadsheetApp.getUi().alert(
+      "Please enter 'Approval Amount and Comments' in Request Spreadsheet before sending this email."
+    );
+    return;
+  }
+
+  const formattedAmount = `$${Number(approvalAmount).toFixed(2)}`;
+
+  if (method === "Transfer") {
+    GmailApp.sendEmail(studentEmail, "Your Request was Approved (Transfer)", "", {
+      from: "studentsenate@pacificu.edu",
+      htmlBody: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+        <p>Hello,</p>
+        <p>Your request was <strong style="color:green;">approved</strong> by USS as a <strong>Transfer</strong> for ${formattedAmount}.</p>
+        <p>Refer to your funding request form for any stipulations on your funding, and details on how to get reimbursed.<p>
+        <p>You can <a href="${requestLink}" target="_blank" style="color: #1a73e8;">view your request here</a>.</p>
+        <p>Contact <a href="mailto:studentsenatefinance@groups.pacificu.edu">studentsenatefinance@groups.pacificu.edu</a> with questions.</p>
+        <br>
+        <p style="margin-bottom: 0;">Best,</p>
+        <p style="margin-top: 2px;">
+          Undergraduate Student Senate<br>
+          Pacific University<br>
+          <a href="mailto:studentsenate@pacificu.edu">studentsenate@pacificu.edu</a>
+        </p>
+      </div>`
+    });
+    sheet.getRange(row, 6).setValue("Approved"); // Payment Approval
+    sheet.getRange(row, 9).setValue("Transfer"); // Payment Method
+    SpreadsheetApp.getUi().alert("USS marked as Transfer. Email sent to applicant.");
+    sheet.getRange(row, 11).setBackground("#fef8e3");
+
+  } else if (method === "Reimbursement") {
+    GmailApp.sendEmail(studentEmail, "Your Request was Approved (Reimbursement)", "", {
+      from: "studentsenate@pacificu.edu",
+      htmlBody: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+        <p>Hello,</p>
+        <p>Your request was <strong style="color:green;">approved</strong> by USS as a <strong>Reimbursement</strong> for ${formattedAmount}.</p>
+        <p>Refer to your funding request form for any stipulations on your funding, and details on how to get reimbursed.<p>
+        <p>You can <a href="${requestLink}" target="_blank" style="color: #1a73e8;">view your request here</a>.</p>
+        <p>Please send completed forms with attached reciepts to the email below</p>
+        <p>Contact <a href="mailto:studentsenatefinance@groups.pacificu.edu">studentsenatefinance@groups.pacificu.edu</a> with questions.</p>
+        <br>
+        <p style="margin-bottom: 0;">Best,</p>
+        <p style="margin-top: 2px;">
+          Undergraduate Student Senate<br>
+          Pacific University<br>
+          <a href="mailto:studentsenate@pacificu.edu">studentsenate@pacificu.edu</a>
+        </p>
+      </div>`
+    });
+    SpreadsheetApp.getUi().alert("USS marked as Reimbursement. Email sent to applicant.");
+    sheet.getRange(row, 6).setValue("Approved");
+    sheet.getRange(row, 9).setValue("Reimbursement");
+  }
+
+  // Update USS Approved column
+  const headerRow = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const headerIndex = headerRow.indexOf("USS Approved");
+  if (headerIndex !== -1) sheet.getRange(row, headerIndex + 1).setValue("Approved");
+}
+
+function processCompleted() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Master Tracker');
+  const row = sheet.getActiveRange().getRow();
+  const paymentMethod = sheet.getRange(row, 9).getValue(); // Column I
+  const requestLink = sheet.getRange(row, 3).getValue();
+  const fileId = extractFileId(requestLink);
+  const studentSheet = SpreadsheetApp.openById(fileId);
+  const homePage = studentSheet.getSheetByName('Home_Page'); // Column B is student email (ASPU Allocation Sheet)
+  const studentEmail = homePage.getRange("B10").getValue().toString().trim(); // Ensure valid email
+
+  // Determine status
+  let status;
+  if (paymentMethod === "Reimbursement") {
+    status = "Sent";
+  GmailApp.sendEmail(studentEmail, "Your Reimbursement Request is being Processed", "", {
+      from: "studentsenate@pacificu.edu",
+      htmlBody: `<div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+        <p>Hello,</p>
+        <p>The documents from your request have been sent to Accounts Payable.</p>
+        <p>Please allow 2 weeks for processing.</p>
+        <p>Contact <a href="mailto:studentsenatefinance@groups.pacificu.edu">studentsenatefinance@groups.pacificu.edu</a> with questions.</p>
+        <br>
+        <p style="margin-bottom: 0;">Best,</p>
+        <p style="margin-top: 2px;">
+          Undergraduate Student Senate<br>
+          Pacific University<br>
+          <a href="mailto:studentsenate@pacificu.edu">studentsenate@pacificu.edu</a>
+        </p>
+      </div>`
+     });
+  } else if (paymentMethod === "Transfer") {
+    status = "Completed";
+  } else {
+    return;
+  }
+
+  // Update Column 12
+  sheet.getRange(row, 12).setValue(status);
+  SpreadsheetApp.getUi().alert(`Request marked as ${status}, email sent if reimbursement.`);
+}
+
+// === FILE ID HELPER ===
+function extractFileId(url) {
+  const match = url.match(/\/d\/([\-\w]{25,})/);
+  if (!match) throw new Error("Invalid Google Sheet URL: " + url + "Make sure correct row is selected");
+  return match[1];
+}
+
+function convertExcelToSheet(fileId) {
+  // Get the Excel file from Drive
+  var file = DriveApp.getFileById(fileId);
+
+  // Use Drive API to convert it into a Google Sheet
+  var resource = {
+    title: file.getName().replace(/\.xlsx$/i, ''), // remove .xlsx
+    mimeType: MimeType.GOOGLE_SHEETS
+  };
+
+  var converted = Drive.Files.copy(resource, fileId);
+
+  // Delete the old Excel file after successful conversion
+  try {
+    file.setTrashed(true);  // safer than file.setTrashed(false) since it can be restored
+    Logger.log("Deleted old Excel file: " + file.getName());
+  } catch (err) {
+    Logger.log("Error deleting Excel file: " + err);
+  }
+
+  return converted.id; // returns the new Google Sheet file ID
+}
