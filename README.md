@@ -16,7 +16,7 @@ The system updates request status and ensures all approvals are tracked.
 ## Process Flow
 <img src="https://github.com/user-attachments/assets/3eba916a-8ed2-444b-b234-30007a508cdd" alt="Reimbursement Flowchart" width="500"/>
 
-## Key Apps Script Features / Formulas:
+## Key Apps Script Features / Formulas (Full project code available in code repository) :
 - **DriveApp.getFolderById()** and **SpreadsheetApp.openById()** to pull files and interact with spreadsheets.
 
 - **IMPORTRANGE()** formulas to dynamically pull values from request sheets into the tracker:
