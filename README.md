@@ -1,4 +1,4 @@
-## USS Funding Request Tracker**
+## USS Additional Funding Request Integrated Manager
 An automated tracker for additional funding requests that manages approval workflows and reimbursement processes for student organizations. Built with Google Apps Script and Google Sheets, it streamlines the movement of requests through multiple approval stages and improves tracking accuracy.
 
 
