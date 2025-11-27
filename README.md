@@ -17,17 +17,22 @@ The system updates request status and ensures all approvals are tracked.
 <img src="https://github.com/user-attachments/assets/3eba916a-8ed2-444b-b234-30007a508cdd" alt="Reimbursement Flowchart" width="500"/>
 
 ## Key Apps Script Features / Formulas:
-**DriveApp.getFolderById()** and **SpreadsheetApp.openById()** to pull files and interact with spreadsheets.
+- **DriveApp.getFolderById()** and **SpreadsheetApp.openById()** to pull files and interact with spreadsheets.
 
-**IMPORTRANGE()** formulas to dynamically pull values from request sheets into the tracker:
+- **IMPORTRANGE()** formulas to dynamically pull values from request sheets into the tracker:
 
-Custom menu in Sheets with functions like **approveFCRequest(), approveUSSTransfer(), and processCompleted()** for one-click approvals.
+- Custom menu in Sheets with functions like **approveFCRequest(), approveUSSTransfer(), and processCompleted()** for one-click approvals.
 
-**GmailApp.sendEmail()** to notify students of approvals, denials, or reimbursement status.
+<img width="400" height="264" alt="Captura de Pantalla 2025-11-26 a la(s) 19 50 07" src="https://github.com/user-attachments/assets/192e351c-21aa-483e-a614-b4cc7935f0c5" />
 
-Excel-to-Google Sheet conversion function: **convertExcelToSheet()** ensures compatibility.
 
-Unique ID generation for each request: **REQ-2025-XXXX**.
+- **GmailApp.sendEmail()** to notify students of approvals, denials, or reimbursement status.
+
+- Excel-to-Google Sheet conversion function: **convertExcelToSheet()** ensures compatibility.
+
+<img width="400" height="443" alt="Captura de Pantalla 2025-11-26 a la(s) 19 51 12" src="https://github.com/user-attachments/assets/96f1ee1e-8451-4d96-91f4-489b189c40ad" />
+
+- Unique ID generation for each request: **REQ-2025-XXXX**.
 
 ## Results / Impact
 - **Time Savings:** Automates tracking and notifications, saving 2-5 hours per week for the Finance Committee depending on request numbers.
